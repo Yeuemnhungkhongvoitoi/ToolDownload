@@ -41,33 +41,62 @@ def download_and_install(file_info):
     if filename.lower().endswith('.apk'):
         install_apk(save_path)
 
+import re
+
 def download_gofile():
-    url = input("\n[+] Nhập link trang Gofile: ")
-    # Loại bỏ khoảng trắng hoặc ký tự thừa nếu có
-    url = url.strip()
-    
-    # Lấy ID (đảm bảo lấy phần cuối của link)
-    content_id = url.split('/')[-1]
-    api_url = f"https://api.gofile.io/contents/{content_id}"
-    
-    # Header giả lập trình duyệt để tránh bị chặn
+    url = input("\n[+] Nhập link trang Gofile: ").strip()
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Android 10; Mobile; rv:86.0) Gecko/86.0 Firefox/86.0"
     }
     
-    print("[*] Đang kiểm tra nội dung...")
+    print("[*] Đang kết nối tới Gofile...")
     try:
-        # Thêm headers vào request
-        response = requests.get(api_url, headers=headers).json()
+        # Lấy nội dung trang web
+        response = requests.get(url, headers=headers)
+        if response.status_code != 200:
+            print("[!] Không thể truy cập link, kiểm tra lại kết nối!")
+            return
+
+        # Tìm kiếm link tải trực tiếp trong mã HTML bằng Regular Expression
+        # Link tải Gofile thường nằm trong các thẻ json hoặc thuộc tính link
+        pattern = r'"link":"(https://[^"]+)"'
+        direct_links = re.findall(pattern, response.text)
         
-        if response['status'] == 'ok':
-            files_dict = response['data']['contents']
-            # Chuyển thành list
-            file_list = [files_dict[key] for key in files_dict]
-            total_files = len(file_list)
+        # Lọc các link trùng lặp
+        direct_links = list(set(direct_links))
+        
+        if not direct_links:
+            print("[!] Không tìm thấy file trong link này. Có thể link đã hết hạn hoặc riêng tư.")
+            return
+
+        print(f"[!] Tìm thấy {len(direct_links)} file.")
+        num_to_download = int(input(f"[?] Nhập số lượng file muốn tải (1-{min(10, len(direct_links))}): "))
+        num_to_download = max(1, min(num_to_download, 10, len(direct_links)))
+
+        for i in range(num_to_download):
+            link = direct_links[i].replace("\\/", "/") # Sửa lỗi định dạng link của Gofile
+            filename = link.split('/')[-1].split('?')[0] # Lấy tên file
             
-            print(f"[!] Tìm thấy {total_files} file trong link.")
-            # ... (phần code còn lại của bạn giữ nguyên)
+            print(f"\n--- Đang tải file {i+1}: {filename} ---")
+            download_and_install_direct(link, filename) # Gọi hàm tải trực tiếp
+
+    except Exception as e:
+        print(f"[!] Lỗi hệ thống: {e}")
+
+def download_and_install_direct(file_link, filename):
+    save_path = f"/sdcard/Download/{filename}"
+    r = requests.get(file_link, stream=True)
+    total_size = int(r.headers.get('content-length', 0))
+    
+    with open(save_path, 'wb') as f:
+        with tqdm(total=total_size, unit='iB', unit_scale=True) as bar:
+            for data in r.iter_content(chunk_size=1024):
+                size = f.write(data)
+                bar.update(size)
+    
+    print(f"\n[✓] Xong: {save_path}")
+    if filename.lower().endswith('.apk'):
+        install_apk(save_path)
 
 def main():
     while True:
