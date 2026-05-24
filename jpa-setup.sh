@@ -10,6 +10,6 @@ pip install requests tqdm
 
 # Tải script chính từ link GitHub của bạn
 echo "Đang tải JPA Tester từ GitHub..."
-curl -o /sdcard/Download/tester.py https://raw.githubusercontent.com/Yeuemnhungkhongvoitoi/ToolDownload/refs/heads/main/tester.py
+curl -o /sdcard/Download/jpa-download.py https://raw.githubusercontent.com/Yeuemnhungkhongvoitoi/ToolDownload/refs/heads/main/jpa-download.py
 
 echo "Cài đặt hoàn tất!"
