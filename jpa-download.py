@@ -12,6 +12,15 @@ YELLOW = "\033[33m"
 RESET = "\033[0m"
 BOLD = "\033[1m"
 
+# Header chuẩn giả lập trình duyệt Chrome trên Android (Termux) để qua mặt bộ lọc GoFile
+HEADERS_CHUAN = {
+    "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
+    "Origin": "https://gofile.io",
+    "Referer": "https://gofile.io/",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
+}
+
 def xoa_man_hinh():
     os.system('clear')
 
@@ -24,7 +33,7 @@ def hien_thi_banner():
 /\__/ / | |   | | | |  | | \ \_/ /\ \_/ / |____
 \____/  \_|   \_| |_/  \_/  \___/  \___/\_____/
                                               
-           >> CHIẾN BINH ROOT TERMUX <<
+           >> TESTER <<
 {RESET}"""
     print(banner)
 
@@ -34,47 +43,64 @@ def kiem_tra_root():
         sys.exit(1)
 
 def lay_id_gofile(url):
-    match = re.search(r"gofile\.io/d/([a-zA-Z0-9]+)", url)
+    match = re.search(r"gofile\.io/d/([a-zA-Z0-9\-]+)", url)
     if match:
         return match.group(1)
     return None
 
 def lay_token_gofile():
     try:
-        response = requests.post("https://api.gofile.io/accounts").json()
+        # Tạo tài khoản guest kèm headers trình duyệt
+        response = requests.post("https://api.gofile.io/accounts", headers=HEADERS_CHUAN).json()
         if response.get("status") == "ok":
             return response["data"]["token"]
+        else:
+            print(f"{RED}[!] Không thể lấy Token: {response}{RESET}")
     except Exception as e:
-        print(f"{RED}[!] Không thể tạo session với GoFile: {e}{RESET}")
+        print(f"{RED}[!] Lỗi kết nối API lấy Token: {e}{RESET}")
     return None
 
 def tai_va_cai_dat(gofile_url):
     folder_id = lay_id_gofile(gofile_url)
     if not folder_id:
-        print(f"{RED}[!] Đường link GoFile không hợp lệ!{RESET}")
+        print(f"{RED}[!] Đường link GoFile không đúng định dạng!{RESET}")
         return
 
-    print(f"{YELLOW}[*] Đang kết nối tới GoFile...{RESET}")
+    print(f"{YELLOW}[*] Đang khởi tạo session bảo mật với GoFile...{RESET}")
     token = lay_token_gofile()
     if not token:
         return
 
     try:
+        # Cấu hình header riêng cho thư mục cần tải
+        headers = HEADERS_CHUAN.copy()
+        headers["Referer"] = f"https://gofile.io/d/{folder_id}"
+        headers["Authorization"] = f"Bearer {token}"  # Gửi token qua quyền Bearer mã hóa
+
         url_api = f"https://api.gofile.io/contents/{folder_id}?wt={token}"
-        response = requests.get(url_api).json()
+        response = requests.get(url_api, headers=headers).json()
         
+        # Nếu GoFile trả về lỗi, in hẳn chi tiết lỗi ra màn hình để debug
         if response.get("status") != "ok":
-            print(f"{RED}[!] Không tìm thấy thư mục hoặc thư mục bị lỗi!{RESET}")
+            print(f"{RED}[!] Lỗi từ GoFile: Thư mục không tồn tại hoặc bị chặn hệ thống!{RESET}")
+            print(f"{YELLOW}[*] Chi tiết phản hồi phản hồi: {response}{RESET}")
             return
         
-        children = response["data"]["children"]
-        files = [children[f_id] for f_id in children if children[f_id]["type"] == "file"]
+        data = response.get("data", {})
+        children = data.get("children", {})
         
+        # Xử lý danh sách file từ cấu trúc JSON của GoFile
+        files = []
+        if isinstance(children, dict):
+            files = [children[f_id] for f_id in children if children[f_id].get("type") == "file"]
+        elif isinstance(children, list):
+            files = [f for f in children if f.get("type") == "file"]
+            
         if not files:
-            print(f"{YELLOW}[!] Thư mục trống hoặc không chứa file hợp lệ.{RESET}")
+            print(f"{YELLOW}[!] Thư mục này trống hoặc không chứa tệp tin nào hợp lệ.{RESET}")
             return
         
-        print(f"{GREEN}[✓] Tìm thấy {len(files)} file trong thư mục.{RESET}")
+        print(f"{GREEN}[✓] Kết nối thành công! Tìm thấy {len(files)} file.{RESET}")
         
         # Chọn số lượng file muốn tải
         try:
@@ -84,10 +110,10 @@ def tai_va_cai_dat(gofile_url):
             else:
                 so_luong_tai = min(int(so_luong), len(files))
         except ValueError:
-            print(f"{RED}[!] Số lượng không hợp lệ. Tiến hành tải toàn bộ.{RESET}")
+            print(f"{RED}[!] Nhập sai định dạng số. Tiến hành tải toàn bộ.{RESET}")
             so_luong_tai = len(files)
 
-        # Tiến hành tải
+        # Tiến hành tải và cài đặt
         for i in range(so_luong_tai):
             file_info = files[i]
             file_name = file_info["name"]
@@ -95,65 +121,7 @@ def tai_va_cai_dat(gofile_url):
             
             print(f"\n{CYAN}[{i+1}/{so_luong_tai}] Đang tải: {file_name}...{RESET}")
             
-            headers = {"Cookie": f"accountToken={token}"}
-            file_data = requests.get(download_url, headers=headers, stream=True)
+            # Khi tải file cũng cần truyền Cookie token
+            download_headers = HEADERS_CHUAN.copy()
+            download_headers["Cookie"] = f"
             
-            with open(file_name, "wb") as f:
-                for chunk in file_data.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
-            
-            print(f"{GREEN}[✓] Đã tải xong: {file_name}{RESET}")
-            
-            # Tự động cài đặt nếu là file APK
-            if file_name.endswith(".apk"):
-                print(f"{YELLOW}[*] Phát hiện file APK. Đang tự động cài đặt bằng quyền ROOT...{RESET}")
-                duong_dan_file = os.path.abspath(file_name)
-                # Thực thi lệnh cài đặt hệ thống ẩn
-                ket_qua = os.system(f"pm install -r '{duong_dan_file}'")
-                
-                if ket_qua == 0:
-                    print(f"{GREEN}[✓] Cài đặt thành công {file_name}!{RESET}")
-                    # Xoá file apk sau khi cài xong để sạch máy (tùy chọn)
-                    os.remove(duong_dan_file)
-                else:
-                    print(f"{RED}[!] Cài đặt thất bại. Lỗi hệ thống pm.{RESET}")
-            else:
-                print(f"{YELLOW}[-] File không phải định dạng APK, bỏ qua bước cài đặt.{RESET}")
-
-    except Exception as e:
-        print(f"{RED}[!] Có lỗi xảy ra trong quá trình xử lý: {e}{RESET}")
-
-def hien_thi_menu():
-    while True:
-        xoa_man_hinh()
-        hien_thi_banner()
-        print(f"{BOLD}--- DANH SÁCH MENU ---{RESET}")
-        print(f"{CYAN}[1]{RESET} Auto tải và cài đặt APK từ GoFile")
-        print(f"{CYAN}[2]{RESET} Kiểm tra trạng thái Root")
-        print(f"{CYAN}[0]{RESET} Thoát công cụ")
-        print("-" * 30)
-        
-        lua_chon = input(f"{YELLOW}Nhập lựa chọn của bạn: {RESET}")
-        
-        if lua_chon == "1":
-            link = input(f"{YELLOW}Nhập link GoFile (VD: https://gofile.io/d/xxxxx): {RESET}")
-            tai_va_cai_dat(link.strip())
-            input(f"\n{GREEN}Nhấn Enter để quay lại Menu...{RESET}")
-        elif lua_chon == "2":
-            if os.getuid() == 0:
-                print(f"{GREEN}[✓] Thiết bị đã được Root và Termux đang có quyền tối cao!{RESET}")
-            else:
-                print(f"{RED}[!] Chưa có quyền Root!{RESET}")
-            input(f"\n{GREEN}Nhấn Enter để quay lại Menu...{RESET}")
-        elif lua_chon == "0":
-            print(f"{CYAN}Cảm ơn bạn đã sử dụng JPA TOOL. Tạm biệt!{RESET}")
-            break
-        else:
-            print(f"{RED}[!] Lựa chọn không hợp lệ!{RESET}")
-            input(f"\n{GREEN}Nhấn Enter để thử lại...{RESET}")
-
-if __name__ == "__main__":
-    kiem_tra_root()
-    hien_thi_menu()
-    
