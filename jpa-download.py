@@ -23,54 +23,40 @@ def install_apk(file_path):
         print(f"[!] Cài đặt thất bại: {result.stderr}")
 
 def get_gofile_data(content_id):
-    # Dùng header giả lập trình duyệt Chrome
+    # API trực tiếp không qua trung gian, kèm User-Agent giả lập trình duyệt
+    url = f"https://api.gofile.io/contents/{content_id}"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Referer": "https://gofile.io/",
-        "Origin": "https://gofile.io"
+        "Referer": "https://gofile.io/"
     }
-    
-    session = requests.Session()
-    session.headers.update(headers)
-    
-    # 1. Tạo account tạm thời để lấy token
     try:
-        acc = session.get("https://api.gofile.io/createAccount").json()
-        token = acc["data"]["token"]
-        
-        # 2. Truy cập nội dung folder với token
-        url = f"https://api.gofile.io/contents/{content_id}?token={token}"
-        resp = session.get(url).json()
-        
-        if resp['status'] == 'ok':
-            return resp['data']['contents']
+        resp = requests.get(url, headers=headers, timeout=10)
+        data = resp.json()
+        if data['status'] == 'ok':
+            return data['data']['contents']
     except Exception as e:
         print(f"[!] Lỗi kết nối API: {e}")
     return None
 
-def download_file(file_info):
-    name = file_info['name']
+def download_and_install(file_info):
     link = file_info['link']
+    name = file_info['name']
     save_path = f"/sdcard/Download/{name}"
     
-    print(f"[!] Đang tải: {name}")
+    print(f"\n[!] Đang tải: {name}")
     try:
-        # Cần thêm header khi tải file thật sự
-        headers = {"User-Agent": "Mozilla/5.0"}
-        r = requests.get(link, stream=True, headers=headers)
+        r = requests.get(link, stream=True)
         total_size = int(r.headers.get('content-length', 0))
-        
         with open(save_path, 'wb') as f:
             with tqdm(total=total_size, unit='iB', unit_scale=True) as bar:
                 for data in r.iter_content(chunk_size=1024):
                     size = f.write(data)
                     bar.update(size)
-        
-        print(f"\n[✓] Hoàn tất: {save_path}")
+        print(f"[✓] Đã lưu: {save_path}")
         if name.lower().endswith('.apk'):
             install_apk(save_path)
     except Exception as e:
-        print(f"[!] Lỗi tải file {name}: {e}")
+        print(f"[!] Lỗi tải file: {e}")
 
 def main():
     while True:
@@ -81,19 +67,18 @@ def main():
         
         choice = input("\n[?] Chọn chức năng: ")
         if choice == '1':
-            url = input("[+] Nhập link Gofile: ").strip()
-            # Xử lý nếu user nhập cả URL đầy đủ
+            url = input("[+] Nhập link trang Gofile: ").strip()
             content_id = url.split('/')[-1]
-            
             files = get_gofile_data(content_id)
+            
             if files:
                 file_list = [files[key] for key in files]
                 print(f"[!] Tìm thấy {len(file_list)} file.")
-                num = int(input(f"[?] Số lượng muốn tải (1-{len(file_list)}): "))
+                num = int(input(f"[?] Nhập số lượng file muốn tải (1-{len(file_list)}): "))
                 for i in range(min(num, len(file_list))):
-                    download_file(file_list[i])
+                    download_and_install(file_list[i])
             else:
-                print("[!] Không lấy được dữ liệu. Kiểm tra lại link hoặc kết nối!")
+                print("[!] Không tìm thấy dữ liệu. Kiểm tra lại link!")
             input("\nNhấn Enter để quay lại menu...")
         elif choice == '0':
             sys.exit()
